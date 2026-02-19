@@ -2,16 +2,21 @@ package com.geomatch.app;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Activity; // NOVO
+import android.content.Intent; // NOVO
 import android.content.pm.PackageManager;
+import android.net.Uri; // NOVO
 import android.os.Bundle;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback; // NOVO
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable; // NOVO
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -20,7 +25,16 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private static final int REQUEST_CODE_PERMISSIONS = 101;
+    private static final int REQUEST_CODE_LOCATION = 102; // Novo código de requisição para localização
+    private static final int REQUEST_CODE_FILE_CHOOSER = 103; // NOVO: Código para o seletor de arquivos
     private PermissionRequest pendingPermissionRequest;
+
+    // Variáveis para guardar o callback de geolocalização
+    private String geolocationOrigin;
+    private GeolocationPermissions.Callback geolocationCallback;
+
+    // NOVO: Variável para o callback do seletor de arquivos
+    private ValueCallback<Uri[]> filePathCallback;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -29,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webview);
+        WebView.setWebContentsDebuggingEnabled(true);
 
         // Configurações da WebView
         WebSettings webSettings = webView.getSettings();
@@ -44,13 +59,44 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        webView.setWebViewClient(new WebViewClient());
+        // ATUALIZAÇÃO AQUI: Substitua o seu webView.setWebViewClient
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // Verifica se a URL é um link da web padrão
+                if (url.startsWith("http:" ) || url.startsWith("https:" )) {
+                    return false; // Deixa o WebView carregar a URL
+                }
+
+                // Se não for um link da web, é um esquema especial (tel:, mailto:, etc.)
+                // Tenta criar uma Intent para que o sistema Android lide com a URL
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    // Opcional: Logar o erro se nenhuma aplicação puder lidar com a Intent
+                    // Log.e("WebView", "Não foi possível lidar com a URL: " + url, e);
+                }
+
+                return true; // Impede o WebView de tentar carregar a URL
+            }
+        });
+
 
         webView.setWebChromeClient(new WebChromeClient() {
             // Lidar com permissões de Localização
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
+                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                    // Guarda o origin e o callback para usar depois
+                    geolocationOrigin = origin;
+                    geolocationCallback = callback;
+                    // Solicita a permissão usando o novo código de requisição
+                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_CODE_LOCATION);
+                } else {
+                    // Se já tem a permissão, concede ao WebView.
+                    callback.invoke(origin, true, false);
+                }
             }
 
             // Lidar com permissões de Câmera/Microfone (WebRTC)
@@ -66,11 +112,61 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
+
+            // NOVO: Lidar com a solicitação de abrir o seletor de arquivos
+            @Override
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback, FileChooserParams fileChooserParams) {
+                // Se já houver um callback, cancele-o para evitar problemas
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
+                filePathCallback = callback;
+
+                // Cria uma Intent para abrir a galeria de conteúdo
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+                // Define o tipo de arquivo a ser selecionado. "image/*" para fotos.
+                intent.setType("image/*");
+
+                // Inicia a activity esperando um resultado
+                startActivityForResult(intent, REQUEST_CODE_FILE_CHOOSER);
+
+                return true; // Retorna true para indicar que vamos lidar com a solicitação
+            }
         });
 
         // Carregar a URL do GeoMatch
         webView.loadUrl("https://geomatch-cvtv.onrender.com/" );
     }
+
+    // NOVO: Metodo para receber o resultado do seletor de arquivos
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        // Verifica se o resultado é do nosso seletor de arquivos
+        if (requestCode == REQUEST_CODE_FILE_CHOOSER) {
+            if (filePathCallback == null) {
+                super.onActivityResult(requestCode, resultCode, data);
+                return;
+            }
+
+            Uri[] results = null;
+            // Verifica se a operação foi bem-sucedida e se há dados (a imagem escolhida)
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                String dataString = data.getDataString();
+                if (dataString != null) {
+                    results = new Uri[]{Uri.parse(dataString)};
+                }
+            }
+
+            // Passa o resultado (a URI da imagem ou null se foi cancelado) de volta para o WebView
+            filePathCallback.onReceiveValue(results);
+            filePathCallback = null; // Limpa o callback
+        } else {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
+    }
+
 
     private boolean hasPermissions(String[] permissions) {
         for (String permission : permissions) {
@@ -84,15 +180,41 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // Verifica se a resposta é para a permissão de Câmera/Áudio
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 if (pendingPermissionRequest != null) {
                     pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
+                    pendingPermissionRequest = null; // Limpa a requisição pendente
                 }
             }
         }
+        // Verifica se a resposta é para a permissão de Localização
+        else if (requestCode == REQUEST_CODE_LOCATION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Se a permissão foi concedida e temos um callback guardado
+                if (geolocationCallback != null) {
+                    // Concede a permissão ao WebView
+                    geolocationCallback.invoke(geolocationOrigin, true, false);
+                }
+            } else {
+                // Opcional: O usuário negou a permissão.
+                // Você pode chamar o callback com 'false' se quiser notificar o WebView.
+                if (geolocationCallback != null) {
+                    geolocationCallback.invoke(geolocationOrigin, false, false);
+                }
+            }
+            // Limpa as variáveis de geolocalização
+            geolocationOrigin = null;
+            geolocationCallback = null;
+        }
     }
 
+    /**
+     *
+     */
+    @SuppressLint("GestureBackNavigation")
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
