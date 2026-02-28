@@ -20,6 +20,9 @@ import androidx.annotation.Nullable; // NOVO
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import android.app.AlertDialog;
+import android.os.Build;
+import android.content.DialogInterface;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -27,6 +30,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_CODE_PERMISSIONS = 101;
     private static final int REQUEST_CODE_LOCATION = 102; // Novo código de requisição para localização
     private static final int REQUEST_CODE_FILE_CHOOSER = 103; // NOVO: Código para o seletor de arquivos
+
+    private static final int REQUEST_CODE_BACKGROUND_LOCATION = 104;
     private PermissionRequest pendingPermissionRequest;
 
     // Variáveis para guardar o callback de geolocalização
@@ -136,6 +141,11 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+
+// Isso cria um objeto chamado "Android" que estará disponível no JavaScript da sua página web
+        webView.addJavascriptInterface(new WebAppInterface(this), "Android");
+
+
         // Carregar a URL do GeoMatch
         webView.loadUrl("https://geomatch-cvtv.onrender.com/" );
     }
@@ -167,6 +177,30 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void solicitarPermissaoSegundoPlano() {
+        // A permissão de segundo plano só é tratada separadamente a partir do Android 10 (Q)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+
+                // É recomendável e, muitas vezes, exigido pela Google Play explicar o motivo
+                AlertDialog.Builder builder = new AlertDialog.Builder(this);
+                builder.setTitle("Localização Contínua Necessária");
+                builder.setMessage("Para que o GeoMatch consiga manter a sua visibilidade em tempo real para os outros utilizadores mesmo com a aplicação minimizada ou o ecrã bloqueado, precisa de selecionar a opção 'Permitir o tempo todo' no ecrã seguinte.");
+
+                builder.setPositiveButton("Configurar", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        ActivityCompat.requestPermissions(MainActivity.this,
+                                new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION},
+                                REQUEST_CODE_BACKGROUND_LOCATION);
+                    }
+                });
+
+                builder.setNegativeButton("Agora Não", null);
+                builder.show();
+            }
+        }
+    }
 
     private boolean hasPermissions(String[] permissions) {
         for (String permission : permissions) {
@@ -193,14 +227,17 @@ public class MainActivity extends AppCompatActivity {
         // Verifica se a resposta é para a permissão de Localização
         else if (requestCode == REQUEST_CODE_LOCATION) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Se a permissão foi concedida e temos um callback guardado
+                // Se a permissão foi concedida e temos um callback guardado (Primeiro Plano OK)
                 if (geolocationCallback != null) {
-                    // Concede a permissão ao WebView
+                    // Concede a permissão à WebView
                     geolocationCallback.invoke(geolocationOrigin, true, false);
                 }
+
+                // NOVO: Agora que temos a permissão normal, pedimos a de segundo plano!
+                solicitarPermissaoSegundoPlano();
+
             } else {
-                // Opcional: O usuário negou a permissão.
-                // Você pode chamar o callback com 'false' se quiser notificar o WebView.
+                // O utilizador negou a permissão.
                 if (geolocationCallback != null) {
                     geolocationCallback.invoke(geolocationOrigin, false, false);
                 }
