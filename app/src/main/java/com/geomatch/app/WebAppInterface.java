@@ -7,12 +7,21 @@ import android.webkit.JavascriptInterface;
 
 public class WebAppInterface {
     Context mContext;
+    private MainActivity mainActivity;
 
-    WebAppInterface(Context c) {
-        mContext = c;
+    WebAppInterface(MainActivity activity) {
+        mContext = activity;
+        mainActivity = activity;
     }
 
-    // O Javascript no Rails vai chamar essa função passando o ID do usuário
+    @JavascriptInterface
+    public void mostrarNotificacao(String title, String body, String path) {
+        if (mainActivity != null) {
+            mainActivity.criarNotificacaoNativa(title, body, path);
+        }
+    }
+
+    // ... (seus métodos existentes iniciarRastreioSegundoPlano e pararRastreioSegundoPlano)
     @JavascriptInterface
     public void iniciarRastreioSegundoPlano(String userId) {
         Intent serviceIntent = new Intent(mContext, LocationService.class);
