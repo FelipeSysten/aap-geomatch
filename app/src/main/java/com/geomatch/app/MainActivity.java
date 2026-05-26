@@ -11,6 +11,8 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.net.http.SslError;
+import android.util.Log;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.CookieManager;
@@ -20,6 +22,9 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.SslErrorHandler;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebViewClient;
 
 import androidx.annotation.NonNull;
@@ -122,8 +127,39 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 7. WebViewClient
-        webView.setWebViewClient(new WebViewClient());
+        // 7. WebViewClient com tratamento seguro de erros de rede e SSL
+        webView.setWebViewClient(new WebViewClient() {
+            private static final String TAG = "GeoMatch_WebView";
+
+            /**
+             * Chamado quando a página principal ou um sub-recurso falha ao carregar.
+             * Logamos apenas erros do frame principal para evitar ruído de sub-recursos.
+             * Não propagamos a exceção, prevenindo crash em dispositivos legados.
+             */
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request.isForMainFrame()) {
+                    Log.e(TAG, "Erro no carregamento da página"
+                            + " | Código: " + error.getErrorCode()
+                            + " | Descrição: " + error.getDescription()
+                            + " | URL: " + request.getUrl());
+                }
+            }
+
+            /**
+             * Chamado quando ocorre um erro de certificado SSL.
+             * Em produção: SEMPRE cancelar — nunca chamar handler.proceed() com cert inválido.
+             * Não chamar super() pois o comportamento padrão pode deixar o handler pendente,
+             * o que causa crash em alguns dispositivos com Android < 8.
+             */
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                Log.e(TAG, "Erro SSL detectado"
+                        + " | Código: " + error.getPrimaryError()
+                        + " | URL: " + error.getUrl());
+                handler.cancel();
+            }
+        });
 
         // 8. Interfaces e Carga Final
         webView.addJavascriptInterface(new WebAppInterface(this), "Android");
@@ -160,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -168,7 +204,13 @@ public class MainActivity extends AppCompatActivity {
                 .setAutoCancel(true);
 
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+        // POST_NOTIFICATIONS só existe como permissão em tempo de execução no Android 13+ (API 33).
+        // Em APIs anteriores, checkSelfPermission() retorna PERMISSION_DENIED para essa permissão
+        // mesmo que o usuário nunca tenha negado nada — bloqueando silenciosamente todas as notificações.
+        boolean podeNotificar = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                   == PackageManager.PERMISSION_GRANTED;
+        if (podeNotificar) {
             notificationManager.notify((int) System.currentTimeMillis(), builder.build());
         }
     }

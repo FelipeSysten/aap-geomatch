@@ -1,10 +1,13 @@
 package com.geomatch.app;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.location.Location;
 import android.os.Build;
 import android.os.IBinder;
@@ -13,6 +16,7 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
@@ -34,6 +38,8 @@ public class LocationService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        // Canal criado em onCreate() para garantir que exista antes do startForeground()
+        criarCanalNotificacao();
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         locationCallback = new LocationCallback() {
@@ -54,29 +60,45 @@ public class LocationService extends Service {
             userId = intent.getStringExtra("USER_ID");
         }
 
-        criarCanalNotificacao();
         Notification notification = new NotificationCompat.Builder(this, "GeoMatchChannel")
                 .setContentTitle("GeoMatch Ativo")
                 .setContentText("Compartilhando localização em tempo real...")
-                .setSmallIcon(android.R.drawable.ic_menu_mylocation) // Troque pelo ícone do seu app
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .build();
 
-        // Inicia o serviço em primeiro plano (obrigatório para não ser morto pelo Android)
-        startForeground(1, notification);
+        // Inicia o serviço em primeiro plano (obrigatório para não ser morto pelo Android).
+        // A partir da API 29 é obrigatório declarar o tipo explicitamente; na API 35 isso
+        // é aplicado de forma estrita — deve bater com foregroundServiceType no Manifest.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        } else {
+            startForeground(1, notification);
+        }
         solicitarLocalizacao();
 
         return START_STICKY; // Reinicia o serviço se o sistema o matar por falta de memória
     }
 
     private void solicitarLocalizacao() {
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000) // Pega a cada 10 segundos
+        // Verificação explícita antes de chamar requestLocationUpdates().
+        // Em dispositivos API 24-25, a ausência desse guarda pode causar crash
+        // antes que o try-catch tenha chance de interceptar a SecurityException.
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.e("GeoMatch_Service", "ACCESS_FINE_LOCATION não concedida. Serviço encerrado.");
+            stopSelf();
+            return;
+        }
+
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
                 .setMinUpdateIntervalMillis(5000)
                 .build();
 
         try {
             fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
         } catch (SecurityException e) {
-            Log.e("GeoMatch", "Permissão de localização negada", e);
+            Log.e("GeoMatch_Service", "Permissão de localização revogada durante execução.", e);
+            stopSelf();
         }
     }
 
