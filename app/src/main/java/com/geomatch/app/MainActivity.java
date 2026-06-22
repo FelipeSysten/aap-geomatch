@@ -37,6 +37,10 @@ import androidx.core.content.ContextCompat;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String TAG = "GeoMatch_MainActivity";
+    private static final String TRUSTED_HOST = "geomatch-cvtv.onrender.com";
+    private static final String HOME_URL = "https://geomatch-cvtv.onrender.com/";
+
     private WebView webView;
     private static final int REQUEST_CODE_PERMISSIONS = 101;
     private static final int REQUEST_CODE_LOCATION = 102;
@@ -61,7 +65,8 @@ public class MainActivity extends AppCompatActivity {
 
         // 1. Inicializa o objeto primeiro (Faltava isso na ordem correta)
         webView = findViewById(R.id.webview);
-        WebView.setWebContentsDebuggingEnabled(true);
+        // Debugging apenas em builds de desenvolvimento — NUNCA em produção
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
 
         // 2. Cria o canal e pede permissão
         criarCanalDeNotificacao();
@@ -82,8 +87,11 @@ public class MainActivity extends AppCompatActivity {
 
         // 4. Configurações de Localização e Arquivos
         webSettings.setGeolocationEnabled(true);
-        webSettings.setAllowFileAccess(true);
-        webSettings.setAllowContentAccess(true);
+        // Bloqueio de acesso a arquivos locais (requisito Google Play - Cross-App Scripting)
+        webSettings.setAllowFileAccess(false);
+        webSettings.setAllowContentAccess(false);
+        webSettings.setAllowFileAccessFromFileURLs(false);
+        webSettings.setAllowUniversalAccessFromFileURLs(false);
         // Garante que o cache não bloqueie scripts novos
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
@@ -127,15 +135,36 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 7. WebViewClient com tratamento seguro de erros de rede e SSL
+        // 7. WebViewClient com restrição de navegação, validação de origem e tratamento de erros SSL
+        WebAppInterface webAppInterface = new WebAppInterface(this);
+
         webView.setWebViewClient(new WebViewClient() {
             private static final String TAG = "GeoMatch_WebView";
+            private static final String TRUSTED_HOST = "geomatch-cvtv.onrender.com";
 
-            /**
-             * Chamado quando a página principal ou um sub-recurso falha ao carregar.
-             * Logamos apenas erros do frame principal para evitar ruído de sub-recursos.
-             * Não propagamos a exceção, prevenindo crash em dispositivos legados.
-             */
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                // Limpa a URL confiável durante a navegação para evitar race condition
+                webAppInterface.setCurrentUrl("");
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                // Só registra como confiável após o carregamento completo
+                webAppInterface.setCurrentUrl(url);
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                if (TRUSTED_HOST.equals(uri.getHost())) {
+                    return false; // Permite navegação dentro do domínio oficial
+                }
+                // Bloqueia qualquer redirecionamento para domínio não autorizado
+                Log.w(TAG, "Navegação bloqueada para domínio externo: " + uri);
+                return true;
+            }
+
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request.isForMainFrame()) {
@@ -146,12 +175,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            /**
-             * Chamado quando ocorre um erro de certificado SSL.
-             * Em produção: SEMPRE cancelar — nunca chamar handler.proceed() com cert inválido.
-             * Não chamar super() pois o comportamento padrão pode deixar o handler pendente,
-             * o que causa crash em alguns dispositivos com Android < 8.
-             */
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 Log.e(TAG, "Erro SSL detectado"
@@ -162,8 +185,12 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // 8. Interfaces e Carga Final
-        webView.addJavascriptInterface(new WebAppInterface(this), "Android");
-        webView.loadUrl("https://geomatch-cvtv.onrender.com/");
+        webView.addJavascriptInterface(webAppInterface, "Android");
+
+        // Verifica Intent de lançamento (ex: tap em notificação com app fechado).
+        // Valida a URL antes de usar — se não for do nosso domínio, cai na home.
+        String launchUrl = getIntent() != null ? getIntent().getStringExtra("LOAD_URL") : null;
+        webView.loadUrl(isTrustedUrl(launchUrl) ? launchUrl : HOME_URL);
     }
     private void solicitarPermissaoDeNotificacao() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -218,11 +245,30 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (intent != null && intent.hasExtra("LOAD_URL")) {
-            String url = intent.getStringExtra("LOAD_URL");
-            if (webView != null && url != null) {
-                webView.loadUrl(url);
-            }
+        if (intent == null || webView == null) return;
+
+        String url = intent.getStringExtra("LOAD_URL");
+        if (isTrustedUrl(url)) {
+            webView.loadUrl(url);
+        } else {
+            Log.w(TAG, "onNewIntent: URL bloqueada (origem não confiável): " + url);
+            // Não navega para URLs externas — mantém a página atual
+        }
+    }
+
+    /**
+     * Aceita apenas URLs do nosso domínio oficial via HTTPS.
+     * Rejeita null, esquemas file://, javascript://, domínios externos e qualquer
+     * tentativa de redirect malicioso via Intent.
+     */
+    private boolean isTrustedUrl(String url) {
+        if (url == null || url.isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(url);
+            return "https".equals(uri.getScheme()) && TRUSTED_HOST.equals(uri.getHost());
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao validar URL: " + url, e);
+            return false;
         }
     }
 

@@ -10,8 +10,8 @@ android {
         applicationId = "com.geomatch.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.7"
+        versionCode = 10
+        versionName = "1.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,6 +24,9 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+    buildFeatures {
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

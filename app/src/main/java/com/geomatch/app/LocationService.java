@@ -33,7 +33,8 @@ public class LocationService extends Service {
 
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
-    private String userId; // Receberemos isso da WebView
+    private String userId;
+    private String apiToken;
 
     @Override
     public void onCreate() {
@@ -56,8 +57,13 @@ public class LocationService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && intent.hasExtra("USER_ID")) {
-            userId = intent.getStringExtra("USER_ID");
+        if (intent != null) {
+            if (intent.hasExtra("USER_ID")) {
+                userId = intent.getStringExtra("USER_ID");
+            }
+            if (intent.hasExtra("API_TOKEN")) {
+                apiToken = intent.getStringExtra("API_TOKEN");
+            }
         }
 
         Notification notification = new NotificationCompat.Builder(this, "GeoMatchChannel")
@@ -103,19 +109,19 @@ public class LocationService extends Service {
     }
 
     private void enviarParaAPI(double lat, double lng) {
-        if (userId == null) return;
+        if (userId == null || apiToken == null) return;
 
-        // Executa a requisição HTTP em uma thread separada (não pode rodar na principal)
         new Thread(() -> {
             try {
-                URL url = new URL("https://geomatch-cvtv.onrender.com/api/atualizar_localizacao");
+                URL url = new URL("https://geomatch-cvtv.onrender.com/users/update_location");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json; utf-8");
                 conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + apiToken);
                 conn.setDoOutput(true);
 
-                String jsonInputString = String.format("{\"user_id\": \"%s\", \"latitude\": %s, \"longitude\": %s}", userId, lat, lng);
+                String jsonInputString = String.format("{\"latitude\": %s, \"longitude\": %s}", lat, lng);
 
                 try (OutputStream os = conn.getOutputStream()) {
                     byte[] input = jsonInputString.getBytes("utf-8");
