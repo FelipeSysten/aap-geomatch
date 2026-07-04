@@ -8,7 +8,15 @@
       "Bash(\"C:/Program Files/Android/Android Studio/jbr/bin/javac\" -version)",
       "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew assembleDebug)",
       "Read(//c/Program Files/Java/**)",
-      "Read(//c/Program Files/**)"
+      "Read(//c/Program Files/**)",
+      "PowerShell(.\\\\gradlew.bat assembleDebug --console=plain)",
+      "PowerShell(java *)",
+      "PowerShell($env:JAVA_HOME = 'C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr'; Write-Output \"=== JBR version ===\"; & \"$env:JAVA_HOME\\\\bin\\\\java.exe\" -version; Write-Output \"=== assembleDebug ===\"; .\\\\gradlew.bat assembleDebug --console=plain)",
+      "PowerShell($env:JAVA_HOME = ''; .\\\\gradlew.bat assembleDebug --console=plain)",
+      "PowerShell(.\\\\gradlew.bat :app:compileDebugJavaWithJavac --offline -q 2>&1 | Select-Object -Last 40)",
+      "PowerShell(.\\\\gradlew.bat :app:compileDebugJavaWithJavac 2>&1 | Select-Object -Last 45)",
+      "PowerShell(.\\\\gradlew.bat :app:compileDebugJavaWithJavac 2>&1 | Select-Object -Last 20)",
+      "PowerShell(.\\\\gradlew.bat :app:assembleDebug 2>&1 | Select-Object -Last 15)"
     ]
   }
 }

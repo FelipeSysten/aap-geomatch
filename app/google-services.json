@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1025501841231",
+    "project_id": "geomatch-7052a",
+    "storage_bucket": "geomatch-7052a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1025501841231:android:2a03e21b4feb2c9837673a",
+        "android_client_info": {
+          "package_name": "com.geomatch.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1025501841231-njk3sai53bivd1uenrermbroc2kdi1ba.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVw646o5zdBZVXvju8HCTrxSGXQ5qTizc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1025501841231-njk3sai53bivd1uenrermbroc2kdi1ba.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

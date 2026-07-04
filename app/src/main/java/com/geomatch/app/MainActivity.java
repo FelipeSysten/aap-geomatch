@@ -35,6 +35,8 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.firebase.messaging.FirebaseMessaging;
+
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "GeoMatch_MainActivity";
@@ -191,6 +193,20 @@ public class MainActivity extends AppCompatActivity {
         // Valida a URL antes de usar — se não for do nosso domínio, cai na home.
         String launchUrl = getIntent() != null ? getIntent().getStringExtra("LOAD_URL") : null;
         webView.loadUrl(isTrustedUrl(launchUrl) ? launchUrl : HOME_URL);
+
+        // 9. Obtém o token do FCM para este dispositivo (integração isolada).
+        FirebaseMessaging.getInstance().getToken()
+                .addOnCompleteListener(task -> {
+                    if (!task.isSuccessful()) {
+                        Log.w(TAG, "Falha ao obter o token do FCM", task.getException());
+                        return;
+                    }
+
+                    String token = task.getResult();
+                    Log.d(TAG, "Token FCM: " + token);
+                    // Persiste o token e o registra no backend se já houver sessão ativa.
+                    FcmRegistrar.salvarERegistrar(getApplicationContext(), token);
+                });
     }
     private void solicitarPermissaoDeNotificacao() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

@@ -1,11 +1,15 @@
 package com.geomatch.app;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
+
+import androidx.core.content.ContextCompat;
 
 public class WebAppInterface {
 
@@ -55,6 +59,16 @@ public class WebAppInterface {
             Log.w(TAG, "iniciarRastreioSegundoPlano bloqueado: origem não confiável (" + currentUrl + ")");
             return;
         }
+
+        // Android 14+ (API 34) lança SecurityException ao iniciar um Foreground Service do tipo
+        // "location" sem a permissão de localização concedida no momento do start. Verificamos
+        // antes de iniciar o serviço para evitar o crash; o web app deve garantir o grant primeiro.
+        if (ContextCompat.checkSelfPermission(mContext, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "iniciarRastreioSegundoPlano bloqueado: ACCESS_FINE_LOCATION não concedida.");
+            return;
+        }
+
         Intent serviceIntent = new Intent(mContext, LocationService.class);
         serviceIntent.putExtra("USER_ID", userId);
         serviceIntent.putExtra("API_TOKEN", apiToken);
@@ -64,6 +78,24 @@ public class WebAppInterface {
         } else {
             mContext.startService(serviceIntent);
         }
+
+        // Fallback: aproveita a sessão recebida aqui para registrar o token FCM no
+        // backend, caso o web app ainda não tenha chamado registrarTokenFCM(apiToken).
+        FcmRegistrar.registrarComSessao(mContext, apiToken);
+    }
+
+    /**
+     * Recebe a sessão do usuário (apiToken) após o login no web app e registra o
+     * token FCM já obtido pelo dispositivo no backend. Deve ser chamado pelo web
+     * app logo após o login: Android.registrarTokenFCM(apiToken).
+     */
+    @JavascriptInterface
+    public void registrarTokenFCM(String apiToken) {
+        if (!isOriginTrusted()) {
+            Log.w(TAG, "registrarTokenFCM bloqueado: origem não confiável (" + currentUrl + ")");
+            return;
+        }
+        FcmRegistrar.registrarComSessao(mContext, apiToken);
     }
 
     @JavascriptInterface

@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
@@ -30,6 +31,10 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 public class LocationService extends Service {
+
+    private static final String PREFS_NAME = "GeoMatchSession";
+    private static final String KEY_USER_ID = "userId";
+    private static final String KEY_API_TOKEN = "apiToken";
 
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
@@ -57,13 +62,23 @@ public class LocationService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null) {
-            if (intent.hasExtra("USER_ID")) {
-                userId = intent.getStringExtra("USER_ID");
-            }
-            if (intent.hasExtra("API_TOKEN")) {
-                apiToken = intent.getStringExtra("API_TOKEN");
-            }
+        // A sessão (userId/apiToken) chega via iniciarRastreioSegundoPlano no primeiro start.
+        // Persistimos em SharedPreferences para que um restart por START_STICKY — quando o
+        // sistema reentrega o intent como null — ainda tenha os dados e continue enviando à API.
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+
+        if (intent != null && intent.hasExtra("USER_ID")) {
+            userId = intent.getStringExtra("USER_ID");
+            prefs.edit().putString(KEY_USER_ID, userId).apply();
+        } else {
+            userId = prefs.getString(KEY_USER_ID, null);
+        }
+
+        if (intent != null && intent.hasExtra("API_TOKEN")) {
+            apiToken = intent.getStringExtra("API_TOKEN");
+            prefs.edit().putString(KEY_API_TOKEN, apiToken).apply();
+        } else {
+            apiToken = prefs.getString(KEY_API_TOKEN, null);
         }
 
         Notification notification = new NotificationCompat.Builder(this, "GeoMatchChannel")
